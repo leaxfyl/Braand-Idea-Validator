@@ -23,36 +23,46 @@ const Input=z.object({
 });
 const SYSTEM=`You are a candid senior business consultant at Braand School, a business and branding institute in India. Judge how realistic it is to START this business now, not how big it could become. Be strict and do not flatter: most ideas should score between 35 and 75, and a vague idea must score low on startup_feasibility and say it needs clarity. Consider the real-world environment for the given location: local demand, demographics and purchasing power, local competition, regulations and licences (FSSAI, GST, trade licence and others where relevant), supply chain, hiring, seasonality, infrastructure, digital adoption and cultural fit. Tag EVERY item with evidence: fact (well-established general knowledge), assumption (your estimate or inference) or research (something the founder must verify locally, such as rent or the number of nearby competitors). Never invent statistics, named competitors or exact local data. Give ranges and label estimates assumption. If an image is unclear or irrelevant, say so. Keep every text field concise. If the idea is harmful or illegal, return only a JSON object with refused set to true and refusal_reason as a short polite reason. Otherwise return ONLY one JSON object, with no markdown and no code fences, with these keys. Scores are integers 0 to 100 where higher is always better for the founder (investment_requirements: higher means cheaper to fund; competition: higher means a more favourable position; execution_complexity: higher means simpler to run). Keys: title; summary; sub_scores with market_demand, startup_feasibility, investment_requirements, competition, revenue_potential, execution_complexity, each with score, reasoning and evidence; pros and cons (3 to 6 items each); risks (2 to 6 items, each with severity, mitigation and evidence); startup_cost_estimate (low and high as INR numbers, breakdown items and evidence); time_to_launch_estimate; difficulty_to_start (Easy, Moderate, Hard, Very Hard); target_customers; competitive_landscape (no named competitors); legal_and_licensing_checklist; key_assumptions; things_to_research (each with how); improvements; validation_experiments; next_steps (exactly 4 objects with title and tasks). An item is an object with text and evidence (fact, assumption or research).`;
 const hits=new Map();
-function cfg(req){
- if(process.env.OPENAI_API_KEY)return{url:'https://api.openai.com/v1/chat/completions',key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||'gpt-4o',json:true};
- const key=process.env.AI_GATEWAY_API_KEY||req.headers.get('x-vercel-oidc-token')||process.env.VERCEL_OIDC_TOKEN;
- return key?{url:'https://ai-gateway.vercel.sh/v1/chat/completions',key,model:process.env.AI_MODEL||'anthropic/claude-sonnet-5.5',json:false}:null;
+
+function cfg(){
+ const key=process.env.GROQ_API_KEY;
+ if(!key)return null;
+ return {url:'https://api.groq.com/openai/v1/chat/completions',key,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b'};
 }
-async function ask(c,messages){
- const body={model:c.model,temperature:0.35,max_tokens:6000,messages};
- if(c.json)body.response_format={type:'json_object'};
- const response=await fetch(c.url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.key},body:JSON.stringify(body),signal:AbortSignal.timeout(55_000)});
- if(!response.ok)throw new Error('ai '+response.status);
+
+async function ask(config,messages){
+ const response=await fetch(config.url,{
+  method:'POST',
+  headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
+  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:6000,response_format:{type:'json_object'},messages}),
+  signal:AbortSignal.timeout(55_000)
+ });
+ if(!response.ok){
+  const detail=(await response.text()).slice(0,500);
+  console.error('[idea-validator] Groq API error',response.status,detail);
+  throw new Error('groq '+response.status);
+ }
  const payload=await response.json();
  const content=payload.choices?.[0]?.message?.content;
- const text=Array.isArray(content)?content.map(part=>part.text||'').join('\n'):String(content||'');
- const start=text.indexOf('{'),end=text.lastIndexOf('}');
+ const output=Array.isArray(content)?content.map(part=>part.text||'').join('\n'):String(content||'');
+ const start=output.indexOf('{'),end=output.lastIndexOf('}');
  if(start<0||end<start)throw new Error('invalid json');
- return JSON.parse(text.slice(start,end+1));
+ return JSON.parse(output.slice(start,end+1));
 }
+
 export async function POST(req){
  const ip=(req.headers.get('x-forwarded-for')||'unknown').split(',')[0].trim();
  const now=Date.now();const recent=(hits.get(ip)||[]).filter(t=>now-t<60*60*1000);recent.push(now);hits.set(ip,recent);
  if(recent.length>10)return Response.json({error:'Too many validations from this network. Please try again in an hour.'},{status:429});
  let body;try{body=Input.parse(await req.json())}catch{return Response.json({error:'Please enter at least 20 characters. Add up to four JPG, PNG or WebP images.'},{status:400})}
- const config=cfg(req);
- if(!config)return Response.json({error:'AI access is not configured. The site owner needs to connect an AI provider in Vercel.'},{status:503});
+ const config=cfg();
+ if(!config)return Response.json({error:'Groq is not configured. Add GROQ_API_KEY to Vercel Production environment variables.'},{status:503});
  const context=Object.entries(body.context).filter(([,value])=>value).map(([key,value])=>key+': '+value).join(' | ');
- const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\nBusiness idea: '+body.idea+(body.images.length?'\nReference images attached: '+body.images.length+'.':'')} ,...body.images.map(url=>({type:'image_url',image_url:{url}}))];
+ const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\nBusiness idea: '+body.idea+(body.images.length?'\nReference images attached: '+body.images.length+'.':'')},...body.images.map(url=>({type:'image_url',image_url:{url}}))];
  const messages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
  try{
   for(let attempt=0;attempt<2;attempt++){
-   let raw;try{raw=await ask(config,messages)}catch(error){if(String(error.message).startsWith('ai '))throw error;raw=null}
+   let raw;try{raw=await ask(config,messages)}catch(error){if(String(error.message).startsWith('groq '))throw error;raw=null}
    if(!raw){messages.push({role:'user',content:'Return one valid JSON object only. Do not use markdown.'});continue}
    if(raw.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
    const parsed=Result.safeParse(raw);
@@ -62,7 +72,12 @@ export async function POST(req){
   return Response.json({error:'The analysis came back incomplete. Please try again.'},{status:502});
  }catch(error){
   const message=String(error?.message||'');
-  const status=/ai (401|402|403)/.test(message)?'AI access is not authorised or has run out of credits. Check the provider connection in Vercel.':'The AI service is busy or unavailable. Please try again in a minute.';
-  return Response.json({error:status},{status:502});
+  let errorMessage='The AI service is busy or unavailable. Please try again in a minute.';
+  if(message==='groq 401'||message==='groq 403')errorMessage='Groq rejected the API key. Check GROQ_API_KEY in Vercel.';
+  else if(message==='groq 429')errorMessage='Groq rate limit reached. Please wait a minute and try again.';
+  else if(message==='groq 400')errorMessage='Groq rejected the request. Check the submitted idea or images and try again.';
+  else if(message==='groq 413')errorMessage='The request is too large. Remove or reduce the uploaded images.';
+  console.error('[idea-validator] Analysis failed:',message);
+  return Response.json({error:errorMessage},{status:502});
  }
 }
