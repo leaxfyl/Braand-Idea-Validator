@@ -263,3 +263,16 @@ body{background:#030403;color:#f3f4f1}
 @media(max-width:900px){.hero2 h1.hero-title{font-size:clamp(30px,6vw,50px)!important}}
 @media(max-width:640px){.hero2 h1.hero-title{font-size:clamp(24px,6.6vw,40px)!important;letter-spacing:-.055em!important}.hero-title .word-line{white-space:nowrap!important}}
 @media(max-width:380px){.hero2 h1.hero-title{font-size:clamp(21px,6.3vw,26px)!important}}
+
+
+/* Cursor spotlight: reveal the background grid around the pointer */
+.bg:after{
+ background-image:
+  radial-gradient(360px circle at var(--cx,50%) var(--cy,50%),rgba(167,254,43,.095),transparent 76%),
+  linear-gradient(rgba(255,255,255,.075) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,.075) 1px,transparent 1px);
+ background-size:auto,56px 56px,56px 56px;
+ -webkit-mask-image:radial-gradient(circle 420px at var(--cx,50%) var(--cy,50%),#000 0%,rgba(0,0,0,.85) 55%,transparent 100%);
+ mask-image:radial-gradient(circle 420px at var(--cx,50%) var(--cy,50%),#000 0%,rgba(0,0,0,.85) 55%,transparent 100%);
+}
+.cglow{width:560px;height:560px;margin:-280px 0 0 -280px;background:radial-gradient(circle,rgba(167,254,43,.24) 0%,rgba(167,254,43,.11) 28%,rgba(167,254,43,.035) 52%,transparent 72%);mix-blend-mode:screen}
