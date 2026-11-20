@@ -1,6 +1,5 @@
-:root{--lime:#A7FE2B;--mut:#a3a3ad;--line:rgba(255,255,255,.1);--fd:"Basement Grotesque","Arial Black",Impact,sans-serif;--fb:"Coolvetica","Arial",Helvetica,sans-serif;--fm:"JetBrains Mono","SFMono-Regular",Consolas,monospace}
-@font-face{font-family:"Basement Grotesque";src:url("/fonts/BasementGrotesque.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
-@font-face{font-family:"Coolvetica";src:url("/fonts/Coolvetica.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+:root{--lime:#A7FE2B;--mut:#a3a3ad;--line:rgba(255,255,255,.1);--fd:"Bricolage Grotesque",sans-serif;--fb:"DM Sans",Arial,Helvetica,sans-serif;--fm:"JetBrains Mono","SFMono-Regular",Consolas,monospace}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;min-height:100vh;color:#fff;background:#050505;font-family:var(--fb);font-size:16px;line-height:1.6;overflow-x:hidden}
@@ -35,8 +34,8 @@ p{margin:0}
 .top{position:sticky;top:0;z-index:30;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;backdrop-filter:blur(16px);background:rgba(5,5,5,.55);border-bottom:1px solid var(--line)}
 .top nav{display:flex;gap:20px;align-items:center;font-size:14px}
 .top nav a:not(.btn){color:var(--mut)}.top nav a:not(.btn):hover{color:#fff}
-.logo{display:flex;gap:10px;align-items:center;font-family:var(--fd),sans-serif;font-weight:800;font-size:18px}
-.logo span{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#d9ff8a,var(--lime));color:#000;font-size:19px;letter-spacing:-.04em;box-shadow:0 0 28px rgba(167,254,43,.5),0 1px 0 rgba(255,255,255,.6) inset}
+.logo{display:flex;gap:12px;align-items:center;font-family:var(--fd),sans-serif;font-weight:800;font-size:18px}
+.logo img{display:block;width:48px;height:48px;object-fit:contain;flex:0 0 auto}.logo b{font-family:var(--fd),sans-serif;font-weight:800;letter-spacing:-.035em}.logo em{display:none}
 .logo em{font-style:normal;color:var(--mut);font-weight:500;font-size:14px;font-family:var(--fb),sans-serif}
 .glass{position:relative;background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 60%);backdrop-filter:blur(18px) saturate(1.3);border-radius:24px;padding:22px;box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 28px 60px -24px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.06)}
 .glass:before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(140deg,rgba(167,254,43,.6),rgba(255,255,255,.04) 35%,rgba(255,255,255,.04) 65%,rgba(167,254,43,.28));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;opacity:.5;transition:opacity .3s}
@@ -157,7 +156,7 @@ details{border-top:1px solid var(--line);padding:12px 0}summary{cursor:pointer;l
 @media(max-width:640px){
   .wrap{padding:14px 16px 64px}
   .top{padding:10px 14px}
-  .logo{gap:8px;font-size:16px}.logo span{width:34px;height:34px}.logo em{display:none}
+  .logo{gap:9px;font-size:15px}.logo img{width:40px;height:40px}.logo em{display:none}
   .top nav{gap:8px}.top nav .btn{padding:8px 12px;font-size:12px}
   .hero2{padding:38px 0 42px;gap:28px}
   .hero2 h1{max-width:100%;width:100%;font-size:clamp(38px,10.2vw,58px);line-height:1.02;letter-spacing:-.045em}
