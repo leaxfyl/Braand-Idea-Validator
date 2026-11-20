@@ -8,7 +8,7 @@ export function Fx(){
   let tk=false;
   const onScroll=()=>{if(tk)return;tk=true;requestAnimationFrame(()=>{const y=scrollY,h=document.body.scrollHeight-innerHeight;root.style.setProperty('--sy',y);if(bar.current)bar.current.style.transform='scaleX('+(h>0?Math.min(1,y/h):0)+')';tk=false})};
   const onMove=e=>{
-   if(!reduce){root.style.setProperty('--px',(e.clientX/innerWidth-0.5).toFixed(3));root.style.setProperty('--py',(e.clientY/innerHeight-0.5).toFixed(3));if(glow.current)glow.current.style.transform='translate('+e.clientX+'px,'+e.clientY+'px)'}
+   if(!reduce){root.style.setProperty('--px',(e.clientX/innerWidth-0.5).toFixed(3));root.style.setProperty('--py',(e.clientY/innerHeight-0.5).toFixed(3));root.style.setProperty('--cx',e.clientX+'px');root.style.setProperty('--cy',e.clientY+'px');if(glow.current)glow.current.style.transform='translate('+e.clientX+'px,'+e.clientY+'px)'}
    const g=e.target&&e.target.closest?e.target.closest('.glass'):null;
    if(g){const r=g.getBoundingClientRect();g.style.setProperty('--mx',(e.clientX-r.left)+'px');g.style.setProperty('--my',(e.clientY-r.top)+'px')}
   };
