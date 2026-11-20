@@ -1,0 +1,1 @@
+export default function sitemap(){const u='https://braand-idea-validator.vercel.app';return[{url:u,lastModified:new Date(),priority:1},{url:u+'/validate',lastModified:new Date(),priority:0.8}]}

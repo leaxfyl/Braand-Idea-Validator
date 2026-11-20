@@ -1,0 +1,1 @@
+export default function robots(){return{rules:[{userAgent:'*',allow:'/',disallow:['/api/','/report/','/dashboard','/compare']}],sitemap:'https://braand-idea-validator.vercel.app/sitemap.xml'}}
