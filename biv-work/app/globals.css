@@ -251,3 +251,15 @@ body{background:#030403;color:#f3f4f1}
 @media(max-width:900px){.hero2 h1.hero-title{font-size:clamp(30px,6.2vw,52px)!important}}
 @media(max-width:640px){.hero2 h1.hero-title{font-size:clamp(24px,6.8vw,42px)!important;letter-spacing:-.06em!important}.hero-title .word-line{white-space:nowrap!important}}
 @media(max-width:380px){.hero2 h1.hero-title{font-size:clamp(21px,6.6vw,27px)!important}}
+
+
+/* Hero headline: two bold, clean lines in solid white */
+.hero2 h1.hero-title{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:0!important;width:100%!important;max-width:100%!important;font-size:clamp(36px,4.05vw,56px)!important;line-height:1.08!important;letter-spacing:-.05em!important;font-weight:800!important;color:#fff!important;text-shadow:none!important;filter:none!important}
+.hero-title .word-line{display:block!important;white-space:nowrap!important;max-width:100%!important}
+.hero-title .word-line .w,.hero-title .word-line .grad,.hero-title .grad{background:none!important;-webkit-background-clip:initial!important;background-clip:initial!important;color:#fff!important;-webkit-text-fill-color:#fff!important;text-shadow:none!important;filter:none!important}
+.hero-title .word-line .w{margin-right:.16em}
+.hero-title .word-line .w:last-child{margin-right:0}
+@media(max-width:1100px){.hero2 h1.hero-title{font-size:clamp(32px,4.2vw,48px)!important}}
+@media(max-width:900px){.hero2 h1.hero-title{font-size:clamp(30px,6vw,50px)!important}}
+@media(max-width:640px){.hero2 h1.hero-title{font-size:clamp(24px,6.6vw,40px)!important;letter-spacing:-.055em!important}.hero-title .word-line{white-space:nowrap!important}}
+@media(max-width:380px){.hero2 h1.hero-title{font-size:clamp(21px,6.3vw,26px)!important}}
