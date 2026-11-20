@@ -34,13 +34,13 @@ async function ask(config,messages){
  const response=await fetch(config.url,{
   method:'POST',
   headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
-  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:6000,response_format:{type:'json_object'},messages}),
+  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:3000,reasoning_effort:'none',response_format:{type:'json_object'},messages}),
   signal:AbortSignal.timeout(55_000)
  });
  if(!response.ok){
-  const detail=(await response.text()).slice(0,500);
+  const detail=(await response.text()).slice(0,1000);
   console.error('[idea-validator] Groq API error',response.status,detail);
-  throw new Error('groq '+response.status);
+  if(response.status===429){const retry=response.headers.get('retry-after')||response.headers.get('x-ratelimit-reset-tokens')||'';throw new Error('groq 429 '+retry+' '+detail)} throw new Error('groq '+response.status);
  }
  const payload=await response.json();
  const content=payload.choices?.[0]?.message?.content;
@@ -74,7 +74,7 @@ export async function POST(req){
   const message=String(error?.message||'');
   let errorMessage='The AI service is busy or unavailable. Please try again in a minute.';
   if(message==='groq 401'||message==='groq 403')errorMessage='Groq rejected the API key. Check GROQ_API_KEY in Vercel.';
-  else if(message==='groq 429')errorMessage='Groq rate limit reached. Please wait a minute and try again.';
+  else if(message.startsWith('groq 429'))errorMessage='Groq quota limit reached. Wait for the reset shown in Groq Console → Limits. If the daily limit is exhausted, it will reset at the daily window; lowering request size will not bypass it.';
   else if(message==='groq 400')errorMessage='Groq rejected the request. Check the submitted idea or images and try again.';
   else if(message==='groq 413')errorMessage='The request is too large. Remove or reduce the uploaded images.';
   console.error('[idea-validator] Analysis failed:',message);
