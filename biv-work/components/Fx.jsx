@@ -26,8 +26,8 @@ export function Fx(){
    const tick=()=>{
     if(!document.hidden){
      ctx.clearRect(0,0,w,h);
-     for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;const dx=p.x-mx,dy=p.y-my,d=dx*dx+dy*dy;if(d<14000){const f=(1-d/14000)*0.08;p.x+=dx*f;p.y+=dy*f}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.fillStyle='rgba(167,254,43,0.75)';ctx.fill()}
-     for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){const a=P[i],b=P[j],dx=a.x-b.x,dy=a.y-b.y,d=dx*dx+dy*dy;if(d<13000){ctx.strokeStyle='rgba(167,254,43,'+(0.22*(1-d/13000))+')';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}}
+     for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;const dx=p.x-mx,dy=p.y-my,d=dx*dx+dy*dy;if(d<14000){const f=(1-d/14000)*0.08;p.x+=dx*f;p.y+=dy*f}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.fillStyle='rgba(167,254,43,0.38)';ctx.fill()}
+     for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){const a=P[i],b=P[j],dx=a.x-b.x,dy=a.y-b.y,d=dx*dx+dy*dy;if(d<13000){ctx.strokeStyle='rgba(167,254,43,'+(0.11*(1-d/13000))+')';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}}
     }
     raf=requestAnimationFrame(tick)};
    tick();
