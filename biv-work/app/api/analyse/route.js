@@ -33,7 +33,7 @@ async function ask(config,messages){
  const response=await fetch(config.url,{
   method:'POST',
   headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key,'HTTP-Referer':'https://braand-idea-validator.vercel.app','X-Title':'Braand Idea Validator'},
-  body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:12000,reasoning:{enabled:false},response_format:{type:'json_object'},messages}),
+  body:JSON.stringify({model:config.model,models:['nvidia/nemotron-3.5-super-vl:free','inclusionai/ling-3.2-flash:free'],temperature:0.1,max_tokens:12000,reasoning:{enabled:false},response_format:{type:'json_object'},messages}),
   signal:AbortSignal.timeout(config.timeout)
  });
  if(!response.ok){
@@ -125,7 +125,7 @@ export async function POST(req){
  const message=String(lastError?.message||'');
  let errorMessage='All configured AI providers are temporarily unavailable. Please retry in 1 minute.';
  if(message.startsWith('openrouter 401')||message.startsWith('openrouter 403'))errorMessage='OpenRouter rejected its API key. Check OPEN_ROUTER_API_KEY in Vercel.';
- else if(message.startsWith('openrouter 429'))errorMessage='OpenRouter free-model rate limit reached. Wait for the limit to reset, then try again.';
+ else if(message.startsWith('openrouter 429'))errorMessage='OpenRouter and its available free-model providers are currently rate-limited. The app will automatically try its configured free-model fallbacks; if all are busy, wait briefly and retry.';
  
  else if(message==='invalid response schema')errorMessage='The AI providers responded, but could not complete the required analysis format. Please retry in 1 minute.';
  else if(message==='invalid json')errorMessage='OpenRouter returned an incomplete JSON response. Please retry.';
