@@ -26,11 +26,15 @@ const hits=new Map();
 
 function configs(){
  const providers=[];
- const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
+ const geminiKey=process.env.GEMINI_API_KEY;
+ const openaiKey=process.env.OPENAI_API_KEY;
  const groqKey=process.env.GROQ_API_KEY;
- // Groq's configured Qwen 3.8 model supports native JSON mode; use it first.
- if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:24_000});
- if(openRouterKey)providers.push({provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:22_000});
+ const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
+ // Prefer the configured Gemini Flash key to avoid Groq's exhausted 1K output-token/minute free quota.
+ if(geminiKey)providers.push({provider:'Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',key:geminiKey,model:process.env.GEMINI_MODEL||'gemini-2.5-flash',timeout:24_000});
+ if(openaiKey)providers.push({provider:'OpenAI',url:'https://api.openai.com/v1/chat/completions',key:openaiKey,model:process.env.OPENAI_MODEL||'gpt-4.1-mini',timeout:24_000});
+ if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:20_000});
+ if(openRouterKey)providers.push({provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:18_000});
  return providers;
 }
 async function ask(config,messages){
@@ -62,7 +66,7 @@ export async function POST(req){
  if(recent.length>10)return Response.json({error:'Too many validations from this network. Please try again in an hour.'},{status:429});
  let body;try{body=Input.parse(await req.json())}catch{return Response.json({error:'Please enter at least 20 characters. Add up to four JPG, PNG or WebP images.'},{status:400})}
  const providerConfigs=configs();
- if(!providerConfigs.length)return Response.json({error:'AI provider is not configured. Add an OpenRouter or Groq API key in Vercel Production environment variables.'},{status:503});
+ if(!providerConfigs.length)return Response.json({error:'AI provider is not configured. Add a Gemini, OpenAI, Groq or OpenRouter API key in Vercel Production environment variables.'},{status:503});
  const context=Object.entries(body.context).filter(([,value])=>value).map(([key,value])=>key+': '+value).join(' | ');
  const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\\nBusiness idea: '+body.idea+(body.images.length?'\\nReference images attached: '+body.images.length+'.':'')},...body.images.map(url=>({type:'image_url',image_url:{url}}))];
  const baseMessages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
@@ -79,25 +83,20 @@ export async function POST(req){
    if(raw?.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
    let parsed=Result.safeParse(raw);
    if(!parsed.success){
-    messages.push({role:'assistant',content:JSON.stringify(raw)},{role:'user',content:'Fix this object to satisfy the required response structure. Return one complete valid JSON object only. Keep every field concise. Issues: '+parsed.error.issues.slice(0,10).map(issue=>issue.path.join('.')+' '+issue.message).join('; ')});
-    try{
-     raw=await ask(config,messages);
-     if(raw?.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
-     parsed=Result.safeParse(raw);
-    }catch(error){lastError=error;continue}
+    lastError=new Error('invalid response schema');
+    console.warn('[idea-validator] provider returned invalid schema',JSON.stringify({provider:config.provider,issues:parsed.error.issues.slice(0,12).map(issue=>({path:issue.path.join('.'),code:issue.code,message:issue.message.slice(0,120)}))}));
+    continue;
    }
    if(parsed.success)return Response.json({result:parsed.data});
-   lastError=new Error('invalid response schema');
-   console.warn('[idea-validator] provider returned invalid schema',JSON.stringify({provider:config.provider,issues:parsed.error.issues.slice(0,8).map(issue=>({path:issue.path.join('.'),code:issue.code}))}));
   }catch(error){lastError=error}
  }
  const message=String(lastError?.message||'');
- let errorMessage='Both AI providers failed to return a usable analysis. Please try again shortly.';
+ let errorMessage='All configured AI providers are temporarily unavailable. Please retry in 1 minute.';
  if(message.startsWith('openrouter 401')||message.startsWith('openrouter 403'))errorMessage='OpenRouter rejected its API key. Check the OpenRouter key in Vercel.';
  else if(message.startsWith('groq 401')||message.startsWith('groq 403'))errorMessage='Groq rejected its API key. Check the Groq key in Vercel.';
  else if(message.startsWith('openrouter 429')&&providerConfigs.length===1)errorMessage='OpenRouter free-model rate limit reached. Wait for the limit to reset or add a Groq key in Vercel.';
  else if(message.startsWith('groq 429')&&providerConfigs.length===1)errorMessage='Groq rate limit reached. Wait for the quota to reset.';
- else if(message==='invalid response schema')errorMessage='The AI providers responded, but the analysis format was incomplete. Please try again.';
+ else if(message==='invalid response schema')errorMessage='The AI providers responded, but could not complete the required analysis format. Please retry in 1 minute.';
  else if(message==='invalid json')errorMessage='The AI providers returned an unreadable response. Please try again; no credits or idea data were changed.';
  console.error('[idea-validator] all providers failed',JSON.stringify({reason:message,providers:providerConfigs.map(p=>p.provider)}));
  return Response.json({error:errorMessage},{status:502});
