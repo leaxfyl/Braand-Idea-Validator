@@ -24,12 +24,35 @@ const Input=z.object({
 const SYSTEM=`You are a candid senior business consultant at Braand School, a business and branding institute in India. Judge how realistic it is to START this business now, not how big it could become. Be strict and do not flatter: most ideas should score between 35 and 75, and a vague idea must score low on startup_feasibility and say it needs clarity. Consider the real-world environment for the given location: local demand, demographics and purchasing power, local competition, regulations and licences (FSSAI, GST, trade licence and others where relevant), supply chain, hiring, seasonality, infrastructure, digital adoption and cultural fit. Tag EVERY item with evidence: fact (well-established general knowledge), assumption (your estimate or inference) or research (something the founder must verify locally, such as rent or the number of nearby competitors). Never invent statistics, named competitors or exact local data. Give ranges and label estimates assumption. If an image is unclear or irrelevant, say so. Keep every text field concise. If the idea is harmful or illegal, return only a JSON object with refused set to true and refusal_reason as a short polite reason. Otherwise return ONLY one JSON object, with no markdown and no code fences, with these keys. Scores are integers 0 to 100 where higher is always better for the founder (investment_requirements: higher means cheaper to fund; competition: higher means a more favourable position; execution_complexity: higher means simpler to run). Keys: title; summary; sub_scores with market_demand, startup_feasibility, investment_requirements, competition, revenue_potential, execution_complexity, each with score, reasoning and evidence; pros and cons (3 to 6 items each); risks (2 to 6 items, each with severity, mitigation and evidence); startup_cost_estimate (low and high as INR numbers, breakdown items and evidence); time_to_launch_estimate; difficulty_to_start (Easy, Moderate, Hard, Very Hard); target_customers; competitive_landscape (no named competitors); legal_and_licensing_checklist; key_assumptions; things_to_research (each with how); improvements; validation_experiments; next_steps (exactly 4 objects with title and tasks). An item is an object with text and evidence (fact, assumption or research).`;
 const hits=new Map();
 
-function cfg(){
+function configs(){
+ const providers=[];
  const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
- if(openRouterKey)return {provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free'};
  const groqKey=process.env.GROQ_API_KEY;
- if(groqKey)return {provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b'};
- return null;
+ if(openRouterKey)providers.push({provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:22_000});
+ if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:28_000});
+ return providers;
+}
+
+async function ask(config,messages){
+ const response=await fetch(config.url,{
+  method:'POST',
+  headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
+  body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:6500,response_format:{type:'json_object'},messages}),
+  signal:AbortSignal.timeout(config.timeout)
+ });
+ if(!response.ok){
+  const detail=(await response.text()).slice(0,500);
+  console.error('[idea-validator] provider request failed',JSON.stringify({provider:config.provider,model:config.model,status:response.status,detail}));
+  throw new Error(config.provider.toLowerCase()+' '+response.status);
+ }
+ const payload=await response.json();
+ const choice=payload.choices?.[0];
+ const content=choice?.message?.content;
+ const output=Array.isArray(content)?content.map(part=>part.text||'').join('\\n'):String(content||'');
+ console.info('[idea-validator] provider response',JSON.stringify({provider:config.provider,model:payload.model||config.model,finish_reason:choice?.finish_reason||'unknown',content_length:output.length}));
+ const start=output.indexOf('{'),end=output.lastIndexOf('}');
+ if(start<0||end<start)throw new Error('invalid json');
+ try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
 }
 
 async function ask(config,messages){
@@ -57,36 +80,44 @@ export async function POST(req){
  const now=Date.now();const recent=(hits.get(ip)||[]).filter(t=>now-t<60*60*1000);recent.push(now);hits.set(ip,recent);
  if(recent.length>10)return Response.json({error:'Too many validations from this network. Please try again in an hour.'},{status:429});
  let body;try{body=Input.parse(await req.json())}catch{return Response.json({error:'Please enter at least 20 characters. Add up to four JPG, PNG or WebP images.'},{status:400})}
- const config=cfg();
- if(!config)return Response.json({error:'AI provider is not configured. Add OPENROUTER_API_KEY to Vercel Production environment variables.'},{status:503});
+ const providerConfigs=configs();
+ if(!providerConfigs.length)return Response.json({error:'AI provider is not configured. Add an OpenRouter or Groq API key in Vercel Production environment variables.'},{status:503});
  const context=Object.entries(body.context).filter(([,value])=>value).map(([key,value])=>key+': '+value).join(' | ');
- const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\nBusiness idea: '+body.idea+(body.images.length?'\nReference images attached: '+body.images.length+'.':'')},...body.images.map(url=>({type:'image_url',image_url:{url}}))];
- const messages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
- try{
-  for(let attempt=0;attempt<2;attempt++){
+ const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\\nBusiness idea: '+body.idea+(body.images.length?'\\nReference images attached: '+body.images.length+'.':'')},...body.images.map(url=>({type:'image_url',image_url:{url}}))];
+ const baseMessages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
+ let lastError;
+ for(const config of providerConfigs){
+  const messages=[...baseMessages];
+  try{
    let raw;
    try{raw=await ask(config,messages)}catch(error){
-    if(String(error.message)==='invalid json'&&attempt===0){messages.push({role:'user',content:'Your previous response was not valid JSON. Return the complete analysis again as one valid JSON object only. Do not use markdown or code fences. Keep every field concise and ensure all required keys and arrays are present.'});continue}
-    throw error;
+    lastError=error;
+    console.warn('[idea-validator] switching provider after request failure',JSON.stringify({provider:config.provider,reason:String(error.message||error)}));
+    continue;
    }
-   if(!raw){messages.push({role:'user',content:'Return one valid JSON object only. Do not use markdown.'});continue}
-   if(raw.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
-   const parsed=Result.safeParse(raw);
+   if(raw?.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
+   let parsed=Result.safeParse(raw);
+   if(!parsed.success){
+    messages.push({role:'assistant',content:JSON.stringify(raw)},{role:'user',content:'Fix this object to satisfy the required response structure. Return one complete valid JSON object only. Keep every field concise. Issues: '+parsed.error.issues.slice(0,10).map(issue=>issue.path.join('.')+' '+issue.message).join('; ')});
+    try{
+     raw=await ask(config,messages);
+     if(raw?.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
+     parsed=Result.safeParse(raw);
+    }catch(error){lastError=error;continue}
+   }
    if(parsed.success)return Response.json({result:parsed.data});
-   messages.push({role:'assistant',content:JSON.stringify(raw)},{role:'user',content:'Correct the JSON to match this schema issue list and return the complete JSON only: '+parsed.error.issues.slice(0,8).map(issue=>issue.path.join('.')+' '+issue.message).join('; ')});
-  }
-  return Response.json({error:'The analysis came back incomplete. Please try again.'},{status:502});
- }catch(error){
-  const message=String(error?.message||'');
-  let errorMessage='The AI service is busy or unavailable. Please try again in a minute.';
-  if(message==='openrouter 401'||message==='openrouter 403')errorMessage='OpenRouter rejected the API key. Check OPENROUTER_API_KEY in Vercel.';
-  else if(message==='groq 401'||message==='groq 403')errorMessage='Groq rejected the API key. Check GROQ_API_KEY in Vercel.';
-  else if(message.startsWith('openrouter 429'))errorMessage='OpenRouter rate limit reached. Wait for the free-model limit to reset, or try again later.';
-  else if(message.startsWith('groq 429'))errorMessage='Groq quota limit reached. Wait for the reset shown in Groq Console → Limits. If the daily limit is exhausted, it will reset at the daily window; lowering request size will not bypass it.';
-  else if(message==='openrouter 400')errorMessage='OpenRouter rejected the request. Try again or change the configured model.';
-  else if(message==='groq 400')errorMessage='Groq rejected the request. Check the submitted idea or images and try again.';
-  else if(message==='openrouter 413'||message==='groq 413')errorMessage='The request is too large. Remove or reduce the uploaded images.';
-  console.error('[idea-validator] Analysis failed:',message);
-  return Response.json({error:errorMessage},{status:502});
+   lastError=new Error('invalid response schema');
+   console.warn('[idea-validator] provider returned invalid schema',JSON.stringify({provider:config.provider,issues:parsed.error.issues.slice(0,8).map(issue=>({path:issue.path.join('.'),code:issue.code}))}));
+  }catch(error){lastError=error}
  }
+ const message=String(lastError?.message||'');
+ let errorMessage='Both AI providers failed to return a usable analysis. Please try again shortly.';
+ if(message.startsWith('openrouter 401')||message.startsWith('openrouter 403'))errorMessage='OpenRouter rejected its API key. Check the OpenRouter key in Vercel.';
+ else if(message.startsWith('groq 401')||message.startsWith('groq 403'))errorMessage='Groq rejected its API key. Check the Groq key in Vercel.';
+ else if(message.startsWith('openrouter 429')&&providerConfigs.length===1)errorMessage='OpenRouter free-model rate limit reached. Wait for the limit to reset or add a Groq key in Vercel.';
+ else if(message.startsWith('groq 429')&&providerConfigs.length===1)errorMessage='Groq rate limit reached. Wait for the quota to reset.';
+ else if(message==='invalid response schema')errorMessage='The AI providers responded, but the analysis format was incomplete. Please try again.';
+ else if(message==='invalid json')errorMessage='The AI providers returned an unreadable response. Please try again; no credits or idea data were changed.';
+ console.error('[idea-validator] all providers failed',JSON.stringify({reason:message,providers:providerConfigs.map(p=>p.provider)}));
+ return Response.json({error:errorMessage},{status:502});
 }
