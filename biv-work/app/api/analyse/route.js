@@ -28,11 +28,11 @@ function configs(){
  const providers=[];
  const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
  const groqKey=process.env.GROQ_API_KEY;
+ // Groq's configured Qwen 3.8 model supports native JSON mode; use it first.
+ if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:24_000});
  if(openRouterKey)providers.push({provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:22_000});
- if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:28_000});
  return providers;
 }
-
 async function ask(config,messages){
  const response=await fetch(config.url,{
   method:'POST',
