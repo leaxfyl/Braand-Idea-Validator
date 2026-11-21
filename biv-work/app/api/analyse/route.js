@@ -36,7 +36,7 @@ async function ask(config,messages){
  const response=await fetch(config.url,{
   method:'POST',
   headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
-  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:3000,reasoning_effort:'none',response_format:{type:'json_object'},messages}),
+  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:5000,response_format:{type:'json_object'},messages}),
   signal:AbortSignal.timeout(55_000)
  });
  if(!response.ok){
@@ -64,7 +64,7 @@ export async function POST(req){
  const messages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
  try{
   for(let attempt=0;attempt<2;attempt++){
-   let raw;try{raw=await ask(config,messages)}catch(error){if(String(error.message).startsWith('groq '))throw error;raw=null}
+   let raw=await ask(config,messages);
    if(!raw){messages.push({role:'user',content:'Return one valid JSON object only. Do not use markdown.'});continue}
    if(raw.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
    const parsed=Result.safeParse(raw);
