@@ -25,9 +25,11 @@ const SYSTEM=`You are a candid senior business consultant at Braand School, a bu
 const hits=new Map();
 
 function cfg(){
- const key=process.env.GROQ_API_KEY;
- if(!key)return null;
- return {url:'https://api.groq.com/openai/v1/chat/completions',key,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b'};
+ const openRouterKey=process.env.OPENROUTER_API_KEY;
+ if(openRouterKey)return {provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free'};
+ const groqKey=process.env.GROQ_API_KEY;
+ if(groqKey)return {provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b'};
+ return null;
 }
 
 async function ask(config,messages){
@@ -39,8 +41,8 @@ async function ask(config,messages){
  });
  if(!response.ok){
   const detail=(await response.text()).slice(0,1000);
-  console.error('[idea-validator] Groq API error',response.status,detail);
-  if(response.status===429){const retry=response.headers.get('retry-after')||response.headers.get('x-ratelimit-reset-tokens')||'';throw new Error('groq 429 '+retry+' '+detail)} throw new Error('groq '+response.status);
+  console.error('[idea-validator] '+config.provider+' API error',response.status,detail);
+  if(response.status===429){const retry=response.headers.get('retry-after')||response.headers.get('x-ratelimit-reset-tokens')||'';throw new Error(config.provider.toLowerCase()+' 429 '+retry+' '+detail)} throw new Error(config.provider.toLowerCase()+' '+response.status);
  }
  const payload=await response.json();
  const content=payload.choices?.[0]?.message?.content;
@@ -56,7 +58,7 @@ export async function POST(req){
  if(recent.length>10)return Response.json({error:'Too many validations from this network. Please try again in an hour.'},{status:429});
  let body;try{body=Input.parse(await req.json())}catch{return Response.json({error:'Please enter at least 20 characters. Add up to four JPG, PNG or WebP images.'},{status:400})}
  const config=cfg();
- if(!config)return Response.json({error:'Groq is not configured. Add GROQ_API_KEY to Vercel Production environment variables.'},{status:503});
+ if(!config)return Response.json({error:'AI provider is not configured. Add OPENROUTER_API_KEY to Vercel Production environment variables.'},{status:503});
  const context=Object.entries(body.context).filter(([,value])=>value).map(([key,value])=>key+': '+value).join(' | ');
  const userContent=[{type:'text',text:'Founder context: '+(context||'not provided')+'\nBusiness idea: '+body.idea+(body.images.length?'\nReference images attached: '+body.images.length+'.':'')},...body.images.map(url=>({type:'image_url',image_url:{url}}))];
  const messages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
@@ -73,10 +75,13 @@ export async function POST(req){
  }catch(error){
   const message=String(error?.message||'');
   let errorMessage='The AI service is busy or unavailable. Please try again in a minute.';
-  if(message==='groq 401'||message==='groq 403')errorMessage='Groq rejected the API key. Check GROQ_API_KEY in Vercel.';
+  if(message==='openrouter 401'||message==='openrouter 403')errorMessage='OpenRouter rejected the API key. Check OPENROUTER_API_KEY in Vercel.';
+  else if(message==='groq 401'||message==='groq 403')errorMessage='Groq rejected the API key. Check GROQ_API_KEY in Vercel.';
+  else if(message.startsWith('openrouter 429'))errorMessage='OpenRouter rate limit reached. Wait for the free-model limit to reset, or try again later.';
   else if(message.startsWith('groq 429'))errorMessage='Groq quota limit reached. Wait for the reset shown in Groq Console → Limits. If the daily limit is exhausted, it will reset at the daily window; lowering request size will not bypass it.';
+  else if(message==='openrouter 400')errorMessage='OpenRouter rejected the request. Try again or change the configured model.';
   else if(message==='groq 400')errorMessage='Groq rejected the request. Check the submitted idea or images and try again.';
-  else if(message==='groq 413')errorMessage='The request is too large. Remove or reduce the uploaded images.';
+  else if(message==='openrouter 413'||message==='groq 413')errorMessage='The request is too large. Remove or reduce the uploaded images.';
   console.error('[idea-validator] Analysis failed:',message);
   return Response.json({error:errorMessage},{status:502});
  }
