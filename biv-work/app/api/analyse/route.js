@@ -25,7 +25,7 @@ const SYSTEM=`You are a candid senior business consultant at Braand School, a bu
 const hits=new Map();
 
 function cfg(){
- const openRouterKey=process.env.OPENROUTER_API_KEY;
+ const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
  if(openRouterKey)return {provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free'};
  const groqKey=process.env.GROQ_API_KEY;
  if(groqKey)return {provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b'};
