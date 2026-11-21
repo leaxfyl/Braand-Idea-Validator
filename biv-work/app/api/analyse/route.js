@@ -21,7 +21,7 @@ const Input=z.object({
  context:z.object({city:z.string().max(100).optional(),town_type:z.string().max(80).optional(),budget:z.string().max(100).optional(),experience:z.string().max(150).optional(),team:z.string().max(150).optional(),timeline:z.string().max(100).optional()}).default({}),
  images:z.array(z.string().max(5_000_000).regex(/^data:image\/(jpeg|png|webp);base64,/)).max(4).default([])
 });
-const SYSTEM=`You are a candid senior business consultant at Braand School, a business and branding institute in India. Judge how realistic it is to START this business now, not how big it could become. Be strict and do not flatter: most ideas should score between 35 and 75, and a vague idea must score low on startup_feasibility and say it needs clarity. Consider the real-world environment for the given location: local demand, demographics and purchasing power, local competition, regulations and licences (FSSAI, GST, trade licence and others where relevant), supply chain, hiring, seasonality, infrastructure, digital adoption and cultural fit. Tag EVERY item with evidence: fact (well-established general knowledge), assumption (your estimate or inference) or research (something the founder must verify locally, such as rent or the number of nearby competitors). Never invent statistics, named competitors or exact local data. Give ranges and label estimates assumption. If an image is unclear or irrelevant, say so. Keep every text field concise. If the idea is harmful or illegal, return only a JSON object with refused set to true and refusal_reason as a short polite reason. Otherwise return ONLY one JSON object, with no markdown and no code fences, with these keys. Scores are integers 0 to 100 where higher is always better for the founder (investment_requirements: higher means cheaper to fund; competition: higher means a more favourable position; execution_complexity: higher means simpler to run). Keys: title; summary; sub_scores with market_demand, startup_feasibility, investment_requirements, competition, revenue_potential, execution_complexity, each with score, reasoning and evidence; pros and cons (3 to 6 items each); risks (2 to 6 items, each with severity, mitigation and evidence); startup_cost_estimate (low and high as INR numbers, breakdown items and evidence); time_to_launch_estimate; difficulty_to_start (Easy, Moderate, Hard, Very Hard); target_customers; competitive_landscape (no named competitors); legal_and_licensing_checklist; key_assumptions; things_to_research (each with how); improvements; validation_experiments; next_steps (exactly 4 objects with title and tasks). An item is an object with text and evidence (fact, assumption or research).`;
+const SYSTEM=`You are a candid senior business consultant at Braand School, a business and branding institute in India. Judge how realistic it is to START this business now, not how big it could become. Be strict and do not flatter: most ideas should score between 35 and 75, and a vague idea must score low on startup_feasibility and say it needs clarity. Consider the real-world environment for the given location: local demand, demographics and purchasing power, local competition, regulations and licences (FSSAI, GST, trade licence and others where relevant), supply chain, hiring, seasonality, infrastructure, digital adoption and cultural fit. Every evidence field MUST be exactly one lowercase string: fact, assumption, or research. Never use an array for evidence. Tag EVERY item with evidence: fact (well-established general knowledge), assumption (your estimate or inference) or research (something the founder must verify locally, such as rent or the number of nearby competitors). For risks, use exactly the keys text, severity (lowercase high/medium/low), mitigation, evidence. Never invent statistics, named competitors or exact local data. Give ranges and label estimates assumption. If an image is unclear or irrelevant, say so. Keep every text field concise. If the idea is harmful or illegal, return only a JSON object with refused set to true and refusal_reason as a short polite reason. Otherwise return ONLY one JSON object, with no markdown and no code fences, with these keys. Scores are integers 0 to 100 where higher is always better for the founder (investment_requirements: higher means cheaper to fund; competition: higher means a more favourable position; execution_complexity: higher means simpler to run). Keys: title; summary; sub_scores with market_demand, startup_feasibility, investment_requirements, competition, revenue_potential, execution_complexity, each with score, reasoning and evidence; pros and cons (3 to 6 items each); risks (2 to 6 items, each with severity, mitigation and evidence); startup_cost_estimate (low and high as INR numbers, breakdown items and evidence); time_to_launch_estimate; difficulty_to_start (Easy, Moderate, Hard, Very Hard); target_customers; competitive_landscape (no named competitors); legal_and_licensing_checklist; key_assumptions; things_to_research (each with how); improvements; validation_experiments; next_steps (exactly 4 objects with title and tasks). An item is an object with text and evidence (fact, assumption or research).`;
 const hits=new Map();
 
 function configs(){
@@ -31,7 +31,7 @@ function configs(){
  const groqKey=process.env.GROQ_API_KEY;
  const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
  // Prefer the configured Gemini Flash key to avoid Groq's exhausted 1K output-token/minute free quota.
- if(geminiKey)providers.push({provider:'Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',key:geminiKey,model:process.env.GEMINI_MODEL||'gemini-2.5-flash',timeout:24_000});
+ if(geminiKey)providers.push({provider:'Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',key:geminiKey,model:process.env.GEMINI_MODEL||'gemini-3.8-flash',timeout:24_000});
  if(openaiKey)providers.push({provider:'OpenAI',url:'https://api.openai.com/v1/chat/completions',key:openaiKey,model:process.env.OPENAI_MODEL||'gpt-4.1-mini',timeout:24_000});
  if(groqKey)providers.push({provider:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',key:groqKey,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',timeout:20_000});
  if(openRouterKey)providers.push({provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:18_000});
@@ -60,6 +60,44 @@ async function ask(config,messages){
  try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
 }
 
+function normalizeResult(raw){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return raw;
+ const validEvidence=new Set(['fact','assumption','research']);
+ const evidence=value=>{
+  if(typeof value==='string'&&validEvidence.has(value.toLowerCase()))return value.toLowerCase();
+  if(Array.isArray(value)){
+   const found=value.find(v=>typeof v==='string'&&validEvidence.has(v.toLowerCase()));
+   return found?found.toLowerCase():'research';
+  }
+  return 'research';
+ };
+ const normalizeItem=item=>{
+  if(!item||typeof item!=='object')return item;
+  return {...item,evidence:evidence(item.evidence)};
+ };
+ const result={...raw};
+ if(result.sub_scores&&typeof result.sub_scores==='object'){
+  result.sub_scores={...result.sub_scores};
+  for(const key of Object.keys(result.sub_scores)){
+   const score=result.sub_scores[key];
+   if(score&&typeof score==='object')result.sub_scores[key]={...score,evidence:evidence(score.evidence)};
+  }
+ }
+ for(const key of ['pros','cons','target_customers','legal_and_licensing_checklist','key_assumptions','improvements','validation_experiments']){
+  if(Array.isArray(result[key]))result[key]=result[key].map(normalizeItem);
+ }
+ if(Array.isArray(result.startup_cost_estimate?.breakdown)){
+  result.startup_cost_estimate={...result.startup_cost_estimate,evidence:evidence(result.startup_cost_estimate.evidence),breakdown:result.startup_cost_estimate.breakdown.map(normalizeItem)};
+ }
+ if(Array.isArray(result.things_to_research))result.things_to_research=result.things_to_research.map(item=>({...item,evidence:evidence(item?.evidence)}));
+ if(Array.isArray(result.risks))result.risks=result.risks.map(risk=>{
+  if(!risk||typeof risk!=='object')return risk;
+  const severity=String(risk.severity||'medium').toLowerCase();
+  return {...risk,text:risk.text||risk.risk||risk.description||risk.title||'Risk requiring validation',severity:['high','medium','low'].includes(severity)?severity:'medium',mitigation:risk.mitigation||risk.response||risk.action||'Validate this risk before committing significant resources.',evidence:evidence(risk.evidence)};
+ });
+ return result;
+}
+
 export async function POST(req){
  const ip=(req.headers.get('x-forwarded-for')||'unknown').split(',')[0].trim();
  const now=Date.now();const recent=(hits.get(ip)||[]).filter(t=>now-t<60*60*1000);recent.push(now);hits.set(ip,recent);
@@ -81,7 +119,7 @@ export async function POST(req){
     continue;
    }
    if(raw?.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
-   let parsed=Result.safeParse(raw);
+   let parsed=Result.safeParse(normalizeResult(raw));
    if(!parsed.success){
     lastError=new Error('invalid response schema');
     console.warn('[idea-validator] provider returned invalid schema',JSON.stringify({provider:config.provider,issues:parsed.error.issues.slice(0,12).map(issue=>({path:issue.path.join('.'),code:issue.code,message:issue.message.slice(0,120)}))}));
