@@ -43,33 +43,14 @@ async function ask(config,messages){
  if(!response.ok){
   const detail=(await response.text()).slice(0,500);
   console.error('[idea-validator] provider request failed',JSON.stringify({provider:config.provider,model:config.model,status:response.status,detail}));
+  if(response.status===429){const retry=response.headers.get('retry-after')||'';throw new Error(config.provider.toLowerCase()+' 429 '+retry)}
   throw new Error(config.provider.toLowerCase()+' '+response.status);
  }
  const payload=await response.json();
  const choice=payload.choices?.[0];
  const content=choice?.message?.content;
- const output=Array.isArray(content)?content.map(part=>part.text||'').join('\\n'):String(content||'');
- console.info('[idea-validator] provider response',JSON.stringify({provider:config.provider,model:payload.model||config.model,finish_reason:choice?.finish_reason||'unknown',content_length:output.length}));
- const start=output.indexOf('{'),end=output.lastIndexOf('}');
- if(start<0||end<start)throw new Error('invalid json');
- try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
-}
-
-async function ask(config,messages){
- const response=await fetch(config.url,{
-  method:'POST',
-  headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
-  body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:5000,response_format:{type:'json_object'},messages}),
-  signal:AbortSignal.timeout(40_000)
- });
- if(!response.ok){
-  const detail=(await response.text()).slice(0,1000);
-  console.error('[idea-validator] '+config.provider+' API error',response.status,detail);
-  if(response.status===429){const retry=response.headers.get('retry-after')||response.headers.get('x-ratelimit-reset-tokens')||'';throw new Error(config.provider.toLowerCase()+' 429 '+retry+' '+detail)} throw new Error(config.provider.toLowerCase()+' '+response.status);
- }
- const payload=await response.json();
- const content=payload.choices?.[0]?.message?.content;
  const output=Array.isArray(content)?content.map(part=>part.text||'').join('\n'):String(content||'');
+ console.info('[idea-validator] provider response',JSON.stringify({provider:config.provider,model:payload.model||config.model,finish_reason:choice?.finish_reason||'unknown',content_length:output.length}));
  const start=output.indexOf('{'),end=output.lastIndexOf('}');
  if(start<0||end<start)throw new Error('invalid json');
  try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
