@@ -27,13 +27,13 @@ const hits=new Map();
 function configs(){
  const openRouterKey=process.env.OPEN_ROUTER_API_KEY||process.env.OPENROUTER_API_KEY;
  if(!openRouterKey)return [];
- return [{provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'openrouter/free',timeout:50_000}];
+ return [{provider:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',key:openRouterKey,model:process.env.OPENROUTER_MODEL||'google/gemma-4-26b-a4b-it:free',timeout:55_000}];
 }
 async function ask(config,messages){
  const response=await fetch(config.url,{
   method:'POST',
   headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key,'HTTP-Referer':'https://braand-idea-validator.vercel.app','X-Title':'Braand Idea Validator'},
-  body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:6500,response_format:{type:'json_object'},messages}),
+  body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:12000,reasoning:{enabled:false},response_format:{type:'json_object'},messages}),
   signal:AbortSignal.timeout(config.timeout)
  });
  if(!response.ok){
@@ -46,7 +46,9 @@ async function ask(config,messages){
  const choice=payload.choices?.[0];
  const content=choice?.message?.content;
  const output=Array.isArray(content)?content.map(part=>part.text||'').join('\n'):String(content||'');
- console.info('[idea-validator] provider response',JSON.stringify({provider:config.provider,model:payload.model||config.model,finish_reason:choice?.finish_reason||'unknown',content_length:output.length}));
+ const finishReason=choice?.finish_reason||'unknown';
+ console.info('[idea-validator] provider response',JSON.stringify({provider:config.provider,model:payload.model||config.model,finish_reason:finishReason,content_length:output.length,has_reasoning:Boolean(choice?.message?.reasoning||choice?.message?.reasoning_details?.length),prompt_tokens:payload.usage?.prompt_tokens,completion_tokens:payload.usage?.completion_tokens}));
+ if(!output.trim())throw new Error(finishReason==='length'?'output token limit reached':'empty model response');
  const start=output.indexOf('{'),end=output.lastIndexOf('}');
  if(start<0||end<start)throw new Error('invalid json');
  try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
@@ -126,7 +128,9 @@ export async function POST(req){
  else if(message.startsWith('openrouter 429'))errorMessage='OpenRouter free-model rate limit reached. Wait for the limit to reset, then try again.';
  
  else if(message==='invalid response schema')errorMessage='The AI providers responded, but could not complete the required analysis format. Please retry in 1 minute.';
- else if(message==='invalid json')errorMessage='The AI providers returned an unreadable response. Please try again; no credits or idea data were changed.';
+ else if(message==='invalid json')errorMessage='OpenRouter returned an incomplete JSON response. Please retry.';
+ else if(message==='output token limit reached')errorMessage='OpenRouter used its response limit before completing the analysis. Please retry.';
+ else if(message==='empty model response')errorMessage='OpenRouter returned an empty response. Please retry.';
  console.error('[idea-validator] all providers failed',JSON.stringify({reason:message,provider:'OpenRouter',model:providerConfigs[0]?.model||'openrouter/free'}));
  return Response.json({error:errorMessage},{status:502});
 }
