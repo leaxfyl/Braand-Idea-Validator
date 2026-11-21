@@ -37,7 +37,7 @@ async function ask(config,messages){
   method:'POST',
   headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},
   body:JSON.stringify({model:config.model,temperature:0.2,max_tokens:5000,response_format:{type:'json_object'},messages}),
-  signal:AbortSignal.timeout(55_000)
+  signal:AbortSignal.timeout(40_000)
  });
  if(!response.ok){
   const detail=(await response.text()).slice(0,1000);
@@ -49,7 +49,7 @@ async function ask(config,messages){
  const output=Array.isArray(content)?content.map(part=>part.text||'').join('\n'):String(content||'');
  const start=output.indexOf('{'),end=output.lastIndexOf('}');
  if(start<0||end<start)throw new Error('invalid json');
- return JSON.parse(output.slice(start,end+1));
+ try{return JSON.parse(output.slice(start,end+1))}catch{throw new Error('invalid json')}
 }
 
 export async function POST(req){
@@ -64,7 +64,11 @@ export async function POST(req){
  const messages=[{role:'system',content:SYSTEM},{role:'user',content:userContent}];
  try{
   for(let attempt=0;attempt<2;attempt++){
-   let raw=await ask(config,messages);
+   let raw;
+   try{raw=await ask(config,messages)}catch(error){
+    if(String(error.message)==='invalid json'&&attempt===0){messages.push({role:'user',content:'Your previous response was not valid JSON. Return the complete analysis again as one valid JSON object only. Do not use markdown or code fences. Keep every field concise and ensure all required keys and arrays are present.'});continue}
+    throw error;
+   }
    if(!raw){messages.push({role:'user',content:'Return one valid JSON object only. Do not use markdown.'});continue}
    if(raw.refused)return Response.json({refused:true,reason:String(raw.refusal_reason||'This idea cannot be assessed.')});
    const parsed=Result.safeParse(raw);
